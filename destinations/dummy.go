@@ -11,7 +11,7 @@ func NewDummyDestination(config *DestinationConfig) (*DummyDestination, error) {
 	return dest, nil
 }
 
-func (dest *DummyDestination) Send(targetIds []int, message shared.Message) error {
+func (dest *DummyDestination) Send(targetIds []int, message shared.DestinationMessage) error {
 	dest.config.logger.Infow("Send message to dummy dest", "message", message)
 	return nil
 }

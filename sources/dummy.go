@@ -16,10 +16,11 @@ func NewDummySource(config *SourceConfig) (*DummySource, error) {
 	return source, nil
 }
 
-func (source *DummySource) Listen(messages chan shared.Message) error {
+func (source *DummySource) Listen(messages chan shared.SourceMessage) error {
 	for {
 		sleepTime := rand.Intn(500)
-		time.Sleep(time.Duration(sleepTime) * time.Microsecond)
-		messages <- shared.Message{"test": true, "sleep": sleepTime}
+		time.Sleep(time.Duration(sleepTime) * time.Millisecond)
+		messages <- shared.SourceMessage{Source: "dummy_src",
+			Content: map[string]interface{}{"test": true, "sleep": sleepTime}}
 	}
 }

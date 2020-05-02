@@ -7,7 +7,7 @@ import (
 
 // Destination is the interface for destinations (websockets, push notifications, mails)
 type Destination interface {
-	Send(targetIds []int, message shared.Message) error
+	Send(targetIds []int, message shared.DestinationMessage) error
 }
 
 type DestinationConfig struct {

@@ -7,7 +7,7 @@ import (
 
 // Source is the interface for a source service (Redis, SQS, ...)
 type Source interface {
-	Listen(messages chan shared.Message) error
+	Listen(messages chan shared.SourceMessage) error
 }
 
 type SourceConfig struct {

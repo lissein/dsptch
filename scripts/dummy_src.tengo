@@ -1,0 +1,5 @@
+targets := [1, 2, 3]
+output := {
+    "test": 1
+}
+destination := "dummy"
