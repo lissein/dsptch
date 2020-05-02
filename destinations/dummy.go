@@ -1,7 +1,5 @@
 package destinations
 
-import "github.com/lissein/dsptch/shared"
-
 type DummyDestination struct {
 	config *DestinationConfig
 }
@@ -11,7 +9,7 @@ func NewDummyDestination(config *DestinationConfig) (*DummyDestination, error) {
 	return dest, nil
 }
 
-func (dest *DummyDestination) Send(targetIds []int, message shared.DestinationMessage) error {
+func (dest *DummyDestination) Send(message interface{}) error {
 	dest.config.logger.Infow("Send message to dummy dest", "message", message)
 	return nil
 }

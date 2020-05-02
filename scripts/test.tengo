@@ -1,3 +1,7 @@
+json := import("json")
+
 targets := [1, 2, 3]
-output := input
-destination := "dummy"
+
+message := input
+
+send("dummy", "test")

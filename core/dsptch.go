@@ -3,82 +3,118 @@ package core
 import (
 	"fmt"
 	"io/ioutil"
+	"strings"
 
 	"github.com/d5/tengo/v2"
-	"github.com/lissein/dsptch/destinations"
-	"github.com/lissein/dsptch/shared"
-	"github.com/lissein/dsptch/sources"
+	"github.com/d5/tengo/v2/stdlib"
+	"github.com/lissein/dsptch/backends"
 	"github.com/lissein/dsptch/storages"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
+// Map backend name to backend constructor
+var backendConstructors = map[string]interface{}{
+	"redis": backends.NewRedisBackend,
+	"dummy": backends.NewDummyBackend,
+}
+
+func Must(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
 // Dsptch is the main struct for this app
 type Dsptch struct {
-	destinations map[string]destinations.Destination
-	sources      map[string]sources.Source
-	storage      storages.Storage
-	scripts      map[string]*tengo.Compiled
+	scripts  map[string]*tengo.Compiled
+	backends map[string]backends.Backend
+	messages chan backends.BackendInputMessage
 
-	logger   *zap.SugaredLogger
-	messages chan shared.SourceMessage
+	storage storages.Storage
+
+	logger *zap.SugaredLogger
 }
 
 // NewDsptch creates a new app with the specified config
 func NewDsptch() (*Dsptch, error) {
-	config := zap.NewDevelopmentConfig()
-	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	logger, _ := config.Build()
+	logConfig := zap.NewDevelopmentConfig()
+	logConfig.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	logger, _ := logConfig.Build()
 
 	dsptch := &Dsptch{
-		logger:       logger.Sugar(),
-		destinations: make(map[string]destinations.Destination),
-		sources:      make(map[string]sources.Source),
-		messages:     make(chan shared.SourceMessage, 0),
-		scripts:      make(map[string]*tengo.Compiled),
+		logger:   logger.Sugar(),
+		backends: make(map[string]backends.Backend),
+		messages: make(chan backends.BackendInputMessage, 0),
+		scripts:  make(map[string]*tengo.Compiled),
 	}
 
-	// Register destinations
-	destConfig := destinations.NewDestinationConfig(dsptch.logger)
-	dummyDest, err := destinations.NewDummyDestination(destConfig)
-	if err != nil {
-		panic(err)
-	}
-	dsptch.destinations["dummy"] = dummyDest
-
-	// Register sources
-	sourceConfig := sources.NewSourceConfig(dsptch.logger)
-	dummySource, err := sources.NewRedisSource(sourceConfig)
-	if err != nil {
-		panic(err)
-	}
-
-	dsptch.sources["redis"] = dummySource
-
-	// Load scripts
-	content, err := ioutil.ReadFile("scripts/test.tengo")
-	if err != nil {
-		panic(err)
-	}
-
-	script := tengo.NewScript(content)
-	script.Add("destinations", nil)
-	script.Add("storage", nil)
-	script.Add("input", nil)
-
-	compiled, err := script.Compile()
-	if err != nil {
-		panic(err)
-	}
-	dsptch.scripts["redis/test"] = compiled
-	dsptch.scripts["redis/blah"] = compiled
+	dsptch.loadBackends()
+	dsptch.loadScripts()
 
 	return dsptch, nil
 }
 
+func (dsptch *Dsptch) loadBackends() {
+	// TODO Load from config
+	backendNames := []string{"dummy"}
+	var loadedBackends []string
+
+	for _, backendName := range backendNames {
+		dsptch.registerBackend(backendName)
+		loadedBackends = append(loadedBackends, backendName)
+	}
+
+	dsptch.logger.Info("Backends: ", strings.Join(backendNames, ", "))
+}
+
+func (dsptch *Dsptch) registerBackend(name string) {
+	if name == "dummy" {
+		dsptch.backends[name] = backends.NewDummyBackend(&backends.BackendConfig{
+			Logger: dsptch.logger,
+		})
+		return
+	}
+
+	dsptch.logger.Panicf("Invalid backend '%s'", name)
+}
+
+func (dsptch *Dsptch) loadScripts() {
+	// redisScript := dsptch.loadScript("scripts/test.tengo")
+
+	// dsptch.scripts["redis/test"] = redisScript
+	// dsptch.scripts["redis/blah"] = redisScript
+
+	dummyScript := dsptch.loadScript("scripts/dummy.tengo")
+	dsptch.scripts["dummy"] = dummyScript
+}
+
+func (dsptch *Dsptch) loadScript(filename string) *tengo.Compiled {
+	content, err := ioutil.ReadFile(filename)
+	if err != nil {
+		dsptch.logger.Panic(err)
+	}
+
+	script := tengo.NewScript(content)
+
+	script.SetImports(stdlib.GetModuleMap("json"))
+	Must(script.Add("storage", nil))
+	Must(script.Add("input", nil))
+	Must(script.Add("send", &tengo.UserFunction{
+		Name:  "send",
+		Value: dsptch.send,
+	}))
+
+	compiled, err := script.Compile()
+	if err != nil {
+		dsptch.logger.Panic(err)
+	}
+	return compiled
+}
+
 func (dsptch *Dsptch) Run() error {
-	for _, source := range dsptch.sources {
-		go source.Listen(dsptch.messages)
+	for _, backend := range dsptch.backends {
+		go backend.Listen(dsptch.messages)
 	}
 
 	// 5 is the number of "workers"
@@ -97,6 +133,20 @@ func (dsptch *Dsptch) Run() error {
 	}
 }
 
+func (dsptch *Dsptch) send(args ...tengo.Object) (tengo.Object, error) {
+	destID := (args[0].(*tengo.String)).Value
+	message := (args[1].(*tengo.String)).Value
+
+	dest := dsptch.backends[destID]
+
+	if dest == nil {
+		dsptch.logger.Panicf("Invalid destination %s", destID)
+	}
+
+	dest.HandleMessage(backends.BackendOutputMessage{Content: message})
+	return nil, nil
+}
+
 func (dsptch *Dsptch) messageHandler(id int, scripts map[string]*tengo.Compiled) {
 	dsptch.logger.Infof("Started worker %d", id)
 
@@ -105,37 +155,20 @@ func (dsptch *Dsptch) messageHandler(id int, scripts map[string]*tengo.Compiled)
 
 		dsptch.logger.Infow(fmt.Sprintf("Worker[%d] handling message", id), "message", message)
 
-		// Execute tengo source with context (message, storage, available destinations, ...)
-		// And get results (target ids, updated message)
-
-		// targetIds := []int{0, 1, 2, 3}
-
+		// TODO handle list of scenario per sources
 		script := scripts[message.Source]
 
-		if script != nil {
-			err := script.Set("input", message.Content)
-			if err != nil {
-				panic(err)
-			}
+		if script == nil {
+			dsptch.logger.Panicf("Script %s not found", message.Source)
+		}
+
+		err := script.Set("input", message.Content)
+		if err != nil {
+			dsptch.logger.Panic(err)
 		}
 
 		if err := script.Run(); err != nil {
-			panic(err)
+			dsptch.logger.Panic(err)
 		}
-
-		targetIds := toIntSlice(script.Get("targets").Array())
-		destID := script.Get("destination").String()
-		destMessage := shared.DestinationMessage{
-			Source:  message.Source,
-			Content: script.Get("output").String(),
-		}
-
-		dest := dsptch.destinations[destID]
-
-		if dest == nil {
-			dsptch.logger.Panicw("Invalid destination", "destination", destID)
-		}
-
-		dest.Send(targetIds, destMessage)
 	}
 }
