@@ -48,15 +48,15 @@ func NewDsptch() (*Dsptch, error) {
 
 	// Register sources
 	sourceConfig := sources.NewSourceConfig(dsptch.logger)
-	dummySource, err := sources.NewDummySource(sourceConfig)
+	dummySource, err := sources.NewRedisSource(sourceConfig)
 	if err != nil {
 		panic(err)
 	}
 
-	dsptch.sources["dummy"] = dummySource
+	dsptch.sources["redis"] = dummySource
 
 	// Load scripts
-	content, err := ioutil.ReadFile("scripts/dummy_src.tengo")
+	content, err := ioutil.ReadFile("scripts/test.tengo")
 	if err != nil {
 		panic(err)
 	}
@@ -70,7 +70,8 @@ func NewDsptch() (*Dsptch, error) {
 	if err != nil {
 		panic(err)
 	}
-	dsptch.scripts["dummy_src"] = compiled
+	dsptch.scripts["redis/test"] = compiled
+	dsptch.scripts["redis/blah"] = compiled
 
 	return dsptch, nil
 }
@@ -82,7 +83,13 @@ func (dsptch *Dsptch) Run() error {
 
 	// 5 is the number of "workers"
 	for i := 0; i < 5; i++ {
-		go dsptch.messageHandler(i)
+		clonedScripts := make(map[string]*tengo.Compiled)
+
+		for k, v := range dsptch.scripts {
+			clonedScripts[k] = v.Clone()
+		}
+
+		go dsptch.messageHandler(i, clonedScripts)
 	}
 
 	for {
@@ -90,7 +97,7 @@ func (dsptch *Dsptch) Run() error {
 	}
 }
 
-func (dsptch *Dsptch) messageHandler(id int) {
+func (dsptch *Dsptch) messageHandler(id int, scripts map[string]*tengo.Compiled) {
 	dsptch.logger.Infof("Started worker %d", id)
 
 	for {
@@ -103,7 +110,7 @@ func (dsptch *Dsptch) messageHandler(id int) {
 
 		// targetIds := []int{0, 1, 2, 3}
 
-		script := dsptch.scripts[message.Source]
+		script := scripts[message.Source]
 
 		if script != nil {
 			err := script.Set("input", message.Content)
@@ -120,7 +127,7 @@ func (dsptch *Dsptch) messageHandler(id int) {
 		destID := script.Get("destination").String()
 		destMessage := shared.DestinationMessage{
 			Source:  message.Source,
-			Content: script.Get("output").Map(),
+			Content: script.Get("output").String(),
 		}
 
 		dest := dsptch.destinations[destID]

@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -19,8 +20,8 @@ func NewDummySource(config *SourceConfig) (*DummySource, error) {
 func (source *DummySource) Listen(messages chan shared.SourceMessage) error {
 	for {
 		sleepTime := rand.Intn(500)
-		time.Sleep(time.Duration(sleepTime) * time.Millisecond)
+		time.Sleep(time.Duration(sleepTime) * time.Nanosecond)
 		messages <- shared.SourceMessage{Source: "dummy_src",
-			Content: map[string]interface{}{"test": true, "sleep": sleepTime}}
+			Content: fmt.Sprintf("{\"test\": true, \"sleep\": %d}", sleepTime)}
 	}
 }
