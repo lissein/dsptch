@@ -57,7 +57,7 @@ func NewDsptch() (*Dsptch, error) {
 
 func (dsptch *Dsptch) loadBackends() {
 	// TODO Load from config
-	backendNames := []string{"dummy", "redis"}
+	backendNames := []string{"dummy", "redis", "websocket"}
 	var loadedBackends []string
 
 	for _, backendName := range backendNames {
@@ -84,19 +84,25 @@ func (dsptch *Dsptch) registerBackend(name string) {
 		})
 		return
 	}
+	if name == "websocket" {
+		dsptch.backends[name] = backends.NewWebSocketBackend(&backends.BackendConfig{
+			Logger: dsptch.logger.Named("websocket"),
+		})
+		return
+	}
 
 	dsptch.logger.Panicf("Invalid backend '%s'", name)
 }
 
 func (dsptch *Dsptch) loadScripts() {
-	// redisScript := dsptch.loadScript("scripts/test.tengo")
-
-	// dsptch.scripts["redis/test"] = redisScript
-	// dsptch.scripts["redis/blah"] = redisScript
-
 	dummyScript := dsptch.loadScript("scripts/dummy.tengo")
+	wsScript := dsptch.loadScript("scripts/ws.tengo")
+	testScript := dsptch.loadScript("scripts/test.tengo")
+
+	// TODO Enable using multiple scripts for one "source"
 	dsptch.scripts["dummy"] = dummyScript
-	dsptch.scripts["redis/test"] = dummyScript
+	dsptch.scripts["websocket"] = wsScript
+	dsptch.scripts["redis/test"] = testScript
 	dsptch.scripts["redis/blah"] = dummyScript
 }
 
@@ -146,7 +152,8 @@ func (dsptch *Dsptch) Run() error {
 
 func (dsptch *Dsptch) send(args ...tengo.Object) (tengo.Object, error) {
 	destID := (args[0].(*tengo.String)).Value
-	message := (args[1].(*tengo.String)).Value
+	targets := (args[1].(*tengo.Array)).Value
+	message := (args[2].(*tengo.String)).Value
 
 	dest := dsptch.backends[destID]
 
@@ -154,7 +161,7 @@ func (dsptch *Dsptch) send(args ...tengo.Object) (tengo.Object, error) {
 		dsptch.logger.Panicf("Invalid destination %s", destID)
 	}
 
-	dest.HandleMessage(backends.BackendOutputMessage{Content: message})
+	dest.HandleMessage(backends.BackendOutputMessage{Content: message, Targets: awdawdo(targets)})
 	return nil, nil
 }
 

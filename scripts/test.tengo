@@ -1,7 +1,3 @@
-json := import("json")
-
-targets := [1, 2, 3]
-
 message := input
 
-send("dummy", "test")
+send("websocket", [1], message)

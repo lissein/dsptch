@@ -5,4 +5,4 @@ message := {
     added: "test"
 }
 
-send("dummy", [], string(json.encode(message)))
+send("websocket", [1], string(json.encode(message)))

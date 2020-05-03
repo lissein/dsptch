@@ -15,6 +15,7 @@ type BackendInputMessage struct {
 }
 
 type BackendOutputMessage struct {
+	Targets []interface{}
 	Content interface{}
 }
 
