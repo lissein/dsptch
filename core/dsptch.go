@@ -12,10 +12,10 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// Map backend name to backend constructor
-var backendConstructors = map[string]interface{}{
-	"redis": backends.NewRedisBackend,
-	"dummy": backends.NewDummyBackend,
+var builtinBackends = map[string]backends.Constructor{
+	"redis":     backends.NewRedisBackend,
+	"dummy":     backends.NewDummyBackend,
+	"websocket": backends.NewWebSocketBackend,
 }
 
 func Must(err error) {
@@ -56,39 +56,36 @@ func NewDsptch() (*Dsptch, error) {
 func (dsptch *Dsptch) loadBackends() {
 	// TODO Load from config
 	backendNames := []string{"dummy", "redis", "websocket"}
+	backendConfigs := []map[string]interface{}{nil, map[string]interface{}{
+		"channels": []string{"test", "blah"},
+	}, nil}
+
 	var loadedBackends []string
 
-	for _, backendName := range backendNames {
-		dsptch.registerBackend(backendName)
+	for i, backendName := range backendNames {
+		dsptch.registerBackend(backendName, &backends.Config{
+			Logger: dsptch.logger.Named(backendName),
+			Config: backendConfigs[i],
+		})
 		loadedBackends = append(loadedBackends, backendName)
 	}
 
 	dsptch.logger.Info("Backends: ", strings.Join(backendNames, ", "))
 }
 
-func (dsptch *Dsptch) registerBackend(name string) {
-	if name == "dummy" {
-		dsptch.backends[name] = backends.NewDummyBackend(&backends.Config{
-			Logger: dsptch.logger.Named("dummy"),
-		})
-		return
-	}
-	if name == "redis" {
-		dsptch.backends[name] = backends.NewRedisBackend(&backends.Config{
-			Logger: dsptch.logger.Named("redis"),
-			Config: map[string]interface{}{
-				"channels": []string{"test", "blah"},
-			},
-		})
-		return
-	}
-	if name == "websocket" {
-		dsptch.backends[name] = backends.NewWebSocketBackend(&backends.Config{
-			Logger: dsptch.logger.Named("websocket"),
-		})
+func (dsptch *Dsptch) registerBackend(name string, config *backends.Config) {
+	backendConstructor, found := builtinBackends[name]
+
+	if found {
+		backend, err := backendConstructor(config)
+		if err != nil {
+			dsptch.logger.Panicf("Failed to load backend '%s': %s", name, err)
+		}
+		dsptch.backends[name] = backend
 		return
 	}
 
+	// TODO Load backend .so
 	dsptch.logger.Panicf("Invalid backend '%s'", name)
 }
 

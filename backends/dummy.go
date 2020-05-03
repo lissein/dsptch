@@ -11,12 +11,12 @@ type DummyBackend struct {
 	enableListen bool
 }
 
-func NewDummyBackend(config *Config) *DummyBackend {
+func NewDummyBackend(config *Config) (Backend, error) {
 	backend := &DummyBackend{
 		config: config,
 	}
 
-	return backend
+	return backend, nil
 }
 
 // Listen and publish messages to the `messages` channel so that the app can handle it

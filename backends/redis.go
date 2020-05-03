@@ -13,7 +13,7 @@ type RedisBackend struct {
 	channels []string
 }
 
-func NewRedisBackend(config *Config) *RedisBackend {
+func NewRedisBackend(config *Config) (Backend, error) {
 	backend := &RedisBackend{
 		config:   config,
 		channels: config.Config["channels"].([]string),
@@ -29,7 +29,7 @@ func NewRedisBackend(config *Config) *RedisBackend {
 		config.Logger.Panic(err)
 	}
 
-	return backend
+	return backend, nil
 }
 
 func (backend *RedisBackend) Listen(messages chan Message) {

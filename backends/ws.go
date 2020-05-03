@@ -24,14 +24,14 @@ type WebSocketPayload struct {
 	Content string
 }
 
-func NewWebSocketBackend(config *Config) *WebSocketBackend {
+func NewWebSocketBackend(config *Config) (Backend, error) {
 	backend := &WebSocketBackend{
 		config:   config,
 		clients:  make(map[int]*net.Conn),
 		clientId: 0,
 	}
 
-	return backend
+	return backend, nil
 }
 
 func (backend *WebSocketBackend) Listen(messages chan Message) {

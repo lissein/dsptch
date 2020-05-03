@@ -2,7 +2,7 @@ package backends
 
 import "go.uber.org/zap"
 
-type Constructor func(*Config) Backend
+type Constructor func(*Config) (Backend, error)
 
 type InitFunction = func() (Backend, error)
 
