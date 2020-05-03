@@ -7,7 +7,8 @@ import (
 )
 
 type DummyBackend struct {
-	config *BackendConfig
+	config       *BackendConfig
+	enableListen bool
 }
 
 func NewDummyBackend(config *BackendConfig) *DummyBackend {
@@ -20,6 +21,9 @@ func NewDummyBackend(config *BackendConfig) *DummyBackend {
 
 // Listen and publish messages to the `messages` channel so that the app can handle it
 func (backend *DummyBackend) Listen(messages chan BackendInputMessage) {
+	if !backend.enableListen {
+		return
+	}
 	for {
 		sleepTime := rand.Intn(500)
 		time.Sleep(time.Duration(sleepTime) * time.Nanosecond)

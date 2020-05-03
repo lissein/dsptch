@@ -57,7 +57,7 @@ func NewDsptch() (*Dsptch, error) {
 
 func (dsptch *Dsptch) loadBackends() {
 	// TODO Load from config
-	backendNames := []string{"dummy"}
+	backendNames := []string{"dummy", "redis"}
 	var loadedBackends []string
 
 	for _, backendName := range backendNames {
@@ -75,6 +75,15 @@ func (dsptch *Dsptch) registerBackend(name string) {
 		})
 		return
 	}
+	if name == "redis" {
+		dsptch.backends[name] = backends.NewRedisBackend(&backends.BackendConfig{
+			Logger: dsptch.logger,
+			Config: map[string]interface{}{
+				"channels": []string{"test", "blah"},
+			},
+		})
+		return
+	}
 
 	dsptch.logger.Panicf("Invalid backend '%s'", name)
 }
@@ -87,6 +96,8 @@ func (dsptch *Dsptch) loadScripts() {
 
 	dummyScript := dsptch.loadScript("scripts/dummy.tengo")
 	dsptch.scripts["dummy"] = dummyScript
+	dsptch.scripts["redis/test"] = dummyScript
+	dsptch.scripts["redis/blah"] = dummyScript
 }
 
 func (dsptch *Dsptch) loadScript(filename string) *tengo.Compiled {
@@ -148,8 +159,6 @@ func (dsptch *Dsptch) send(args ...tengo.Object) (tengo.Object, error) {
 }
 
 func (dsptch *Dsptch) messageHandler(id int, scripts map[string]*tengo.Compiled) {
-	dsptch.logger.Infof("Started worker %d", id)
-
 	for {
 		message := <-dsptch.messages
 
