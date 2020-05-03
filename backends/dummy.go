@@ -7,11 +7,11 @@ import (
 )
 
 type DummyBackend struct {
-	config       *BackendConfig
+	config       *Config
 	enableListen bool
 }
 
-func NewDummyBackend(config *BackendConfig) *DummyBackend {
+func NewDummyBackend(config *Config) *DummyBackend {
 	backend := &DummyBackend{
 		config: config,
 	}
@@ -20,20 +20,20 @@ func NewDummyBackend(config *BackendConfig) *DummyBackend {
 }
 
 // Listen and publish messages to the `messages` channel so that the app can handle it
-func (backend *DummyBackend) Listen(messages chan BackendInputMessage) {
+func (backend *DummyBackend) Listen(messages chan Message) {
 	if !backend.enableListen {
 		return
 	}
 	for {
 		sleepTime := rand.Intn(500)
 		time.Sleep(time.Duration(sleepTime) * time.Nanosecond)
-		messages <- BackendInputMessage{Source: "dummy",
-			Content: fmt.Sprintf("{\"test\": true, \"sleep\": %d}", sleepTime)}
+		messages <- Message{Source: "dummy",
+			Payload: fmt.Sprintf("{\"test\": true, \"sleep\": %d}", sleepTime)}
 	}
 }
 
 // Handle a message
-func (backend *DummyBackend) HandleMessage(message BackendOutputMessage) error {
+func (backend *DummyBackend) Handle(message Message) error {
 	backend.config.Logger.Infow("Handling message", "message", message)
 	return nil
 }

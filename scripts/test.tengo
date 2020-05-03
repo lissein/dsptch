@@ -1,3 +1,0 @@
-message := input
-
-send("websocket", [1], message)

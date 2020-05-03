@@ -1,8 +1,0 @@
-json := import("json")
-
-message := {
-    input: input,
-    added: "test"
-}
-
-send("websocket", [1], string(json.encode(message)))

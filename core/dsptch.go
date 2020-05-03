@@ -2,13 +2,12 @@ package core
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
+	"path/filepath"
 	"strings"
 
-	"github.com/d5/tengo/v2"
-	"github.com/d5/tengo/v2/stdlib"
+	"github.com/lissein/dsptch/apps"
 	"github.com/lissein/dsptch/backends"
-	"github.com/lissein/dsptch/storages"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -27,11 +26,10 @@ func Must(err error) {
 
 // Dsptch is the main struct for this app
 type Dsptch struct {
-	scripts  map[string]*tengo.Compiled
 	backends map[string]backends.Backend
-	messages chan backends.BackendInputMessage
+	apps     map[string][]apps.App
 
-	storage storages.Storage
+	messages chan backends.Message
 
 	logger *zap.SugaredLogger
 }
@@ -45,12 +43,12 @@ func NewDsptch() (*Dsptch, error) {
 	dsptch := &Dsptch{
 		logger:   logger.Sugar(),
 		backends: make(map[string]backends.Backend),
-		messages: make(chan backends.BackendInputMessage, 0),
-		scripts:  make(map[string]*tengo.Compiled),
+		messages: make(chan backends.Message, 0),
+		apps:     make(map[string][]apps.App),
 	}
 
 	dsptch.loadBackends()
-	dsptch.loadScripts()
+	dsptch.loadApps()
 
 	return dsptch, nil
 }
@@ -70,13 +68,13 @@ func (dsptch *Dsptch) loadBackends() {
 
 func (dsptch *Dsptch) registerBackend(name string) {
 	if name == "dummy" {
-		dsptch.backends[name] = backends.NewDummyBackend(&backends.BackendConfig{
+		dsptch.backends[name] = backends.NewDummyBackend(&backends.Config{
 			Logger: dsptch.logger.Named("dummy"),
 		})
 		return
 	}
 	if name == "redis" {
-		dsptch.backends[name] = backends.NewRedisBackend(&backends.BackendConfig{
+		dsptch.backends[name] = backends.NewRedisBackend(&backends.Config{
 			Logger: dsptch.logger.Named("redis"),
 			Config: map[string]interface{}{
 				"channels": []string{"test", "blah"},
@@ -85,7 +83,7 @@ func (dsptch *Dsptch) registerBackend(name string) {
 		return
 	}
 	if name == "websocket" {
-		dsptch.backends[name] = backends.NewWebSocketBackend(&backends.BackendConfig{
+		dsptch.backends[name] = backends.NewWebSocketBackend(&backends.Config{
 			Logger: dsptch.logger.Named("websocket"),
 		})
 		return
@@ -94,39 +92,39 @@ func (dsptch *Dsptch) registerBackend(name string) {
 	dsptch.logger.Panicf("Invalid backend '%s'", name)
 }
 
-func (dsptch *Dsptch) loadScripts() {
-	dummyScript := dsptch.loadScript("scripts/dummy.tengo")
-	wsScript := dsptch.loadScript("scripts/ws.tengo")
-	testScript := dsptch.loadScript("scripts/test.tengo")
+func (dsptch *Dsptch) loadApps() {
+	loadedApps := make([]string, 0)
+	err := filepath.Walk("apps/", func(path string, info os.FileInfo, err error) error {
+		if filepath.Ext(path) != ".so" {
+			return nil
+		}
 
-	// TODO Enable using multiple scripts for one "source"
-	dsptch.scripts["dummy"] = dummyScript
-	dsptch.scripts["websocket"] = wsScript
-	dsptch.scripts["redis/test"] = testScript
-	dsptch.scripts["redis/blah"] = dummyScript
-}
+		app, err := LoadApp(path)
+		if err != nil {
+			return err
+		}
 
-func (dsptch *Dsptch) loadScript(filename string) *tengo.Compiled {
-	content, err := ioutil.ReadFile(filename)
+		for _, trigger := range app.Triggers() {
+			previous, found := dsptch.apps[trigger]
+
+			if !found {
+				previous = make([]apps.App, 0)
+			}
+
+			dsptch.apps[trigger] = append(previous, app)
+			loadedApps = append(loadedApps, fmt.Sprintf("%s[%s]", app.Name(), strings.Join(app.Triggers(), ", ")))
+		}
+		return nil
+	})
 	if err != nil {
 		dsptch.logger.Panic(err)
 	}
 
-	script := tengo.NewScript(content)
-
-	script.SetImports(stdlib.GetModuleMap("json"))
-	Must(script.Add("storage", nil))
-	Must(script.Add("input", nil))
-	Must(script.Add("send", &tengo.UserFunction{
-		Name:  "send",
-		Value: dsptch.send,
-	}))
-
-	compiled, err := script.Compile()
-	if err != nil {
-		dsptch.logger.Panic(err)
+	if len(loadedApps) > 0 {
+		dsptch.logger.Info("Apps: ", strings.Join(loadedApps, ", "))
+	} else {
+		dsptch.logger.Info("Apps: None")
 	}
-	return compiled
 }
 
 func (dsptch *Dsptch) Run() error {
@@ -136,13 +134,7 @@ func (dsptch *Dsptch) Run() error {
 
 	// 5 is the number of "workers"
 	for i := 0; i < 5; i++ {
-		clonedScripts := make(map[string]*tengo.Compiled)
-
-		for k, v := range dsptch.scripts {
-			clonedScripts[k] = v.Clone()
-		}
-
-		go dsptch.messageHandler(i, clonedScripts)
+		go dsptch.messageHandler(i)
 	}
 
 	for {
@@ -150,41 +142,26 @@ func (dsptch *Dsptch) Run() error {
 	}
 }
 
-func (dsptch *Dsptch) send(args ...tengo.Object) (tengo.Object, error) {
-	destID := (args[0].(*tengo.String)).Value
-	targets := (args[1].(*tengo.Array)).Value
-	message := (args[2].(*tengo.String)).Value
-
-	dest := dsptch.backends[destID]
+func (dsptch *Dsptch) sendApp(backend string, message backends.Message) {
+	dest := dsptch.backends[backend]
 
 	if dest == nil {
-		dsptch.logger.Panicf("Invalid destination %s", destID)
+		dsptch.logger.Panicf("Invalid backend %s", backend)
 	}
 
-	dest.HandleMessage(backends.BackendOutputMessage{Content: message, Targets: awdawdo(targets)})
-	return nil, nil
+	dest.Handle(message)
 }
 
-func (dsptch *Dsptch) messageHandler(id int, scripts map[string]*tengo.Compiled) {
+func (dsptch *Dsptch) messageHandler(id int) {
 	for {
 		message := <-dsptch.messages
 
 		dsptch.logger.Infow(fmt.Sprintf("Worker[%d] handling message", id), "message", message)
 
-		// TODO handle list of scenario per sources
-		script := scripts[message.Source]
+		apps := dsptch.apps[message.Source]
 
-		if script == nil {
-			dsptch.logger.Panicf("Script %s not found", message.Source)
-		}
-
-		err := script.Set("input", message.Content)
-		if err != nil {
-			dsptch.logger.Panic(err)
-		}
-
-		if err := script.Run(); err != nil {
-			dsptch.logger.Panic(err)
+		for _, app := range apps {
+			app.Execute(message, dsptch.sendApp)
 		}
 	}
 }

@@ -8,12 +8,12 @@ import (
 
 type RedisBackend struct {
 	client *redis.Client
-	config *BackendConfig
+	config *Config
 
 	channels []string
 }
 
-func NewRedisBackend(config *BackendConfig) *RedisBackend {
+func NewRedisBackend(config *Config) *RedisBackend {
 	backend := &RedisBackend{
 		config:   config,
 		channels: config.Config["channels"].([]string),
@@ -32,18 +32,18 @@ func NewRedisBackend(config *BackendConfig) *RedisBackend {
 	return backend
 }
 
-func (backend *RedisBackend) Listen(messages chan BackendInputMessage) {
+func (backend *RedisBackend) Listen(messages chan Message) {
 	pubsub := backend.client.Subscribe(backend.channels...)
 
 	for {
 		message := <-pubsub.Channel()
-		messages <- BackendInputMessage{
+		messages <- Message{
 			Source:  fmt.Sprintf("redis/%s", message.Channel),
-			Content: message.Payload,
+			Payload: message.Payload,
 		}
 	}
 }
 
-func (backend *RedisBackend) HandleMessage(message BackendOutputMessage) error {
+func (backend *RedisBackend) Handle(message Message) error {
 	return nil
 }

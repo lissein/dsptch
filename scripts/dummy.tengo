@@ -1,8 +1,0 @@
-json := import("json")
-
-message := {
-    input: input,
-    added: "test"
-}
-
-send("dummy", [], string(json.encode(message)))

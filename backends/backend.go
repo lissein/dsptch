@@ -2,27 +2,21 @@ package backends
 
 import "go.uber.org/zap"
 
-type BackendConstructor func(*BackendConfig) Backend
+type Constructor func(*Config) Backend
 
-type BackendConfig struct {
+type InitFunction = func() (Backend, error)
+
+type Config struct {
 	Logger *zap.SugaredLogger
 	Config map[string]interface{}
 }
 
-type BackendInputMessage struct {
+type Message struct {
 	Source  string
-	Content interface{}
-}
-
-type BackendOutputMessage struct {
-	Targets []interface{}
-	Content interface{}
+	Payload interface{}
 }
 
 type Backend interface {
-	// Listen and publish messages to the `messages` channel so that the app can handle it
-	Listen(messages chan BackendInputMessage)
-
-	// Handle a message
-	HandleMessage(message BackendOutputMessage) error
+	Listen(messages chan Message)
+	Handle(message Message) error
 }
