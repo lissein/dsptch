@@ -71,13 +71,13 @@ func (dsptch *Dsptch) loadBackends() {
 func (dsptch *Dsptch) registerBackend(name string) {
 	if name == "dummy" {
 		dsptch.backends[name] = backends.NewDummyBackend(&backends.BackendConfig{
-			Logger: dsptch.logger,
+			Logger: dsptch.logger.Named("dummy"),
 		})
 		return
 	}
 	if name == "redis" {
 		dsptch.backends[name] = backends.NewRedisBackend(&backends.BackendConfig{
-			Logger: dsptch.logger,
+			Logger: dsptch.logger.Named("redis"),
 			Config: map[string]interface{}{
 				"channels": []string{"test", "blah"},
 			},
