@@ -3,3 +3,9 @@ Backends:
   ☐ Redis
   ☐ Push notifications
   ☐ Mails
+
+Structure:
+  ☐ internal
+  ☐ internal/buitins
+  ☐ shared/backend
+  ☐ shared/apps

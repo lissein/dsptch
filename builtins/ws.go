@@ -1,4 +1,4 @@
-package backends
+package builtins
 
 import (
 	"net"
@@ -7,43 +7,52 @@ import (
 
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
+	"github.com/lissein/dsptch/backends"
 )
 
 type WebSocketBackend struct {
-	config  *Config
+	config  *backends.Config
 	clients map[int]*net.Conn
 
 	// Store the latest client ID
-	clientId int
+	clientID int
 
 	mutex sync.Mutex
 }
 
-type WebSocketPayload struct {
-	Targets []int
-	Content string
+type WebSocketListenPayload struct {
+	FromClient int
+	Content    string
 }
 
-func NewWebSocketBackend(config *Config) (Backend, error) {
+type WebSocketHandlePayload struct {
+	Content string
+	Targets []int
+}
+
+func NewWebSocketBackend(config *backends.Config) (backends.Backend, error) {
 	backend := &WebSocketBackend{
 		config:   config,
 		clients:  make(map[int]*net.Conn),
-		clientId: 0,
+		clientID: 0,
 	}
 
 	return backend, nil
 }
 
-func (backend *WebSocketBackend) Listen(messages chan Message) {
+func (backend *WebSocketBackend) Listen(messages chan backends.Message) {
 	http.ListenAndServe(":3000", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, _, _, err := ws.UpgradeHTTP(r, w)
 		if err != nil {
 			backend.config.Logger.Error(err)
 		}
 
+		var clientID int
+
 		backend.mutex.Lock()
-		backend.clientId++
-		backend.clients[backend.clientId] = &conn
+		backend.clientID++
+		backend.clients[backend.clientID] = &conn
+		clientID = backend.clientID
 		backend.mutex.Unlock()
 
 		go func() {
@@ -56,18 +65,21 @@ func (backend *WebSocketBackend) Listen(messages chan Message) {
 					break
 				}
 
-				// TODO Add clientId to the message
-				messages <- Message{
-					Source:  "websocket",
-					Payload: string(msg),
+				// TODO Add clientID to the message
+				messages <- backends.Message{
+					Source: "websocket",
+					Payload: &WebSocketListenPayload{
+						Content:    string(msg),
+						FromClient: clientID,
+					},
 				}
 			}
 		}()
 	}))
 }
 
-func (backend *WebSocketBackend) Handle(message Message) error {
-	payload := message.Payload.(WebSocketPayload)
+func (backend *WebSocketBackend) Handle(message backends.Message) error {
+	payload := message.Payload.(WebSocketHandlePayload)
 
 	conns := make([]*net.Conn, 0)
 	for _, target := range payload.Targets {

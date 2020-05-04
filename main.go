@@ -1,11 +1,11 @@
 package main
 
 import (
-	"github.com/lissein/dsptch/core"
+	"github.com/lissein/dsptch/internal"
 )
 
 func main() {
-	dsptch, err := core.NewDsptch()
+	dsptch, err := internal.NewDsptch()
 
 	if err != nil {
 		panic(err)

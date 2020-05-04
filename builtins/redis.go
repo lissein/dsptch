@@ -1,19 +1,20 @@
-package backends
+package builtins
 
 import (
 	"fmt"
 
 	"github.com/go-redis/redis/v7"
+	"github.com/lissein/dsptch/backends"
 )
 
 type RedisBackend struct {
 	client *redis.Client
-	config *Config
+	config *backends.Config
 
 	channels []string
 }
 
-func NewRedisBackend(config *Config) (Backend, error) {
+func NewRedisBackend(config *backends.Config) (backends.Backend, error) {
 	backend := &RedisBackend{
 		config:   config,
 		channels: config.Config["channels"].([]string),
@@ -32,18 +33,18 @@ func NewRedisBackend(config *Config) (Backend, error) {
 	return backend, nil
 }
 
-func (backend *RedisBackend) Listen(messages chan Message) {
+func (backend *RedisBackend) Listen(messages chan backends.Message) {
 	pubsub := backend.client.Subscribe(backend.channels...)
 
 	for {
 		message := <-pubsub.Channel()
-		messages <- Message{
+		messages <- backends.Message{
 			Source:  fmt.Sprintf("redis/%s", message.Channel),
 			Payload: message.Payload,
 		}
 	}
 }
 
-func (backend *RedisBackend) Handle(message Message) error {
+func (backend *RedisBackend) Handle(message backends.Message) error {
 	return nil
 }

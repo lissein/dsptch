@@ -1,4 +1,4 @@
-package core
+package internal
 
 import (
 	"fmt"
@@ -8,14 +8,15 @@ import (
 
 	"github.com/lissein/dsptch/apps"
 	"github.com/lissein/dsptch/backends"
+	"github.com/lissein/dsptch/builtins"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 var builtinBackends = map[string]backends.Constructor{
-	"redis":     backends.NewRedisBackend,
-	"dummy":     backends.NewDummyBackend,
-	"websocket": backends.NewWebSocketBackend,
+	"redis":     builtins.NewRedisBackend,
+	"dummy":     builtins.NewDummyBackend,
+	"websocket": builtins.NewWebSocketBackend,
 }
 
 func Must(err error) {

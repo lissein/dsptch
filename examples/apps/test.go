@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/lissein/dsptch/apps"
 	"github.com/lissein/dsptch/backends"
+	"github.com/lissein/dsptch/builtins"
 )
 
 type TestApp struct {
@@ -25,7 +26,7 @@ func (app *TestApp) Execute(message backends.Message, send apps.SendFunction) {
 	targets[0] = 2
 	send("websocket", backends.Message{
 		Source: message.Source,
-		Payload: &backends.WebSocketPayload{
+		Payload: &builtins.WebSocketHandlePayload{
 			Targets: targets,
 		},
 	})
