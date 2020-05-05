@@ -131,7 +131,7 @@ func (dsptch *Dsptch) Run() error {
 	}
 
 	// 5 is the number of "workers"
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 9; i++ {
 		go dsptch.messageHandler(i)
 	}
 
@@ -159,7 +159,7 @@ func (dsptch *Dsptch) messageHandler(id int) {
 		apps := dsptch.apps[message.Source]
 
 		for _, app := range apps {
-			app.Execute(message, dsptch.sendApp)
+			go app.Execute(message, dsptch.sendApp)
 		}
 	}
 }
